@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>THull (Paper Version) Viewer</title>
+  <style>
+    canvas {
+      border: 1px solid #444;
+      background: #fafafa;
+    }
+    button {
+      margin-top: 10px;
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h3>THull (Paper Version) — Convex Hull Viewer</h3>
+
+  <canvas id="cv" width="600" height="600"></canvas>
+  <br>
+  <button onclick="draw()">再計算して描画し直す</button>
+
+  <script>
+    // ===============================
+    // 基本幾何関数
+    // ===============================
+    function cross(o, a, b) {
+      return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    }
+
+    // AndrewHull（最終凸包）
+    function andrewHull(points) {
+      if (points.length <= 1) return points.slice();
+
+      const pts = points.slice().sort((a, b) =>
+        a.x === b.x ? a.y - b.y : a.x - b.x
+      );
+
+      const lower = [];
+      for (const p of pts) {
+        while (lower.length >= 2 &&
+          cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+          lower.pop();
+        }
+        lower.push(p);
+      }
+
+      const upper = [];
+      for (let i = pts.length - 1; i >= 0; i--) {
+        const p = pts[i];
+        while (upper.length >= 2 &&
+          cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+          upper.pop();
+        }
+        upper.push(p);
+      }
+
+      lower.pop();
+      upper.pop();
+      return lower.concat(upper);
+    }
+
+    // ===============================
+    // THull（論文版）
+    // ===============================
+    const THRESHOLD = 50;
+
+    function thull(points) {
+      const n = points.length;
+      if (n <= THRESHOLD) {
+        return andrewHull(points);
+      }
+
+      // 1. セントロイド
+      let cx = 0, cy = 0;
+      for (const p of points) { cx += p.x; cy += p.y; }
+      cx /= n; cy /= n;
+
+      const sectors = [[], [], [], []];
+
+      // 2. 角度で4分割
+      for (const p of points) {
+        const theta = Math.atan2(p.y - cy, p.x - cx);
+        let idx = Math.floor((2 / Math.PI) * (theta + Math.PI / 2));
+        if (idx < 0) idx -= 1;
+        idx = ((idx % 4) + 4) % 4;
+        sectors[idx].push(p);
+      }
+
+      // 3. outer-half filtering
+      const next = [];
+      for (let i = 0; i < 4; i++) {
+        const S = sectors[i];
+        if (S.length === 0) continue;
+
+        S.sort((p, q) => {
+          const dp = (p.x - cx) ** 2 + (p.y - cy) ** 2;
+          const dq = (q.x - cx) ** 2 + (q.y - cy) ** 2;
+          return dq - dp;
+        });
+
+        const k = Math.ceil(S.length / 2);
+        for (let j = 0; j < k; j++) next.push(S[j]);
+      }
+
+      return thull(next);
+    }
+
+    // ===============================
+    // ランダム点生成
+    // ===============================
+    function randomPoints(n, w, h) {
+      return Array.from({ length: n }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h
+      }));
+    }
+
+    // ===============================
+    // 描画
+    // ===============================
+    function draw() {
+      const canvas = document.getElementById("cv");
+      const ctx = canvas.getContext("2d");
+      const W = canvas.width, H = canvas.height;
+
+      const margin = 20;
+      const pts = randomPoints(2000, W - 2 * margin, H - 2 * margin)
+        .map(p => ({ x: p.x + margin, y: p.y + margin }));
+
+      const hullExact = andrewHull(pts);   // 真の凸包（赤）
+      const filtered = thull(pts);         // THull の点集合（青点）
+
+      ctx.clearRect(0, 0, W, H);
+
+      // 全点
+      ctx.fillStyle = "#aaa";
+      for (const p of pts) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // THull の点（青点）
+      ctx.fillStyle = "#00f";
+      for (const p of filtered) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 真の凸包（赤線）
+      ctx.strokeStyle = "#f00";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(hullExact[0].x, hullExact[0].y);
+      for (let i = 1; i < hullExact.length; i++) {
+        ctx.lineTo(hullExact[i].x, hullExact[i].y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    draw();
+  </script>
+</body>
+</html>
